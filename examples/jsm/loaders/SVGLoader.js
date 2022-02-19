@@ -652,13 +652,41 @@ class SVGLoader extends Loader {
 
 		}
 
+		function getSheet( node ) {
+
+			// Chrome gives a sheet even if the `node` does not belong to a document
+			if ( node.sheet ) return node.sheet;
+
+			if ( node.nodeName !== 'style' || ! node.textContent ) return;
+
+			// Firefox requires style to be a part of *HTML* document
+			// to have the sheet
+
+			if ( typeof scope.cssDocument === 'undefined' ) {
+
+				scope.cssDocument = document.implementation.createHTMLDocument( '' );
+
+			}
+
+			const cssStyleElement = scope.cssDocument.createElement( 'style' );
+
+			cssStyleElement.textContent = node.textContent;
+
+			scope.cssDocument.body.appendChild( cssStyleElement );
+
+			return cssStyleElement.sheet;
+
+		}
+
 		function parseCSSStylesheet( node ) {
 
-			if ( ! node.sheet || ! node.sheet.cssRules || ! node.sheet.cssRules.length ) return;
+			const sheet = getSheet( node );
 
-			for ( let i = 0; i < node.sheet.cssRules.length; i ++ ) {
+			if ( ! sheet || ! sheet.cssRules || ! sheet.cssRules.length ) return;
 
-				const stylesheet = node.sheet.cssRules[ i ];
+			for ( let i = 0; i < sheet.cssRules.length; i ++ ) {
+
+				const stylesheet = sheet.cssRules[ i ];
 
 				if ( stylesheet.type !== 1 ) continue;
 
@@ -667,12 +695,18 @@ class SVGLoader extends Loader {
 					.filter( Boolean )
 					.map( i => i.trim() );
 
-				for ( let j = 0; j < selectorList.length; j ++ ) {
+				// Remove empty rules
+				// Will be an array like [ 'fill', 'stroke', 'stroke-width' ]
+				const cssProperties =
+					Object.values( stylesheet.style ).filter( ( v ) => v !== '' );
 
-					// Remove empty rules
-					const definitions = Object.fromEntries(
-						Object.entries( stylesheet.style ).filter( ( [ , v ] ) => v !== '' )
+				// Will be an object like { fill: '#112233', stroke: '#ffaa99' }
+				const definitions =
+					Object.fromEntries(
+						cssProperties.map( ( prop ) => [ prop, stylesheet.style[ prop ] ] )
 					);
+
+				for ( let j = 0; j < selectorList.length; j ++ ) {
 
 					stylesheets[ selectorList[ j ] ] = Object.assign(
 						stylesheets[ selectorList[ j ] ] || {},
